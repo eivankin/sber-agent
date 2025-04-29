@@ -226,6 +226,29 @@ class GradioUI:
             if not os.path.exists(file_upload_folder):
                 os.mkdir(file_upload_folder)
 
+                # Add Whisper model initialization
+        try:
+             import whisper
+             self.whisper_model = whisper.load_model("base")
+        except ImportError:
+            print("Warning: whisper not installed. Voice input will be disabled.")
+            self.whisper_model = None
+
+    def transcribe_audio(self, audio):
+        """Transcribes audio input using Whisper model"""
+        if self.whisper_model is None:
+            return "Error: Whisper model not available. Please install whisper-openai package."
+
+        if audio is None:
+            return ""
+
+        try:
+            result = self.whisper_model.transcribe(audio)
+            return result["text"].strip()
+        except Exception as e:
+            print(f"Transcription error: {e}")
+            return f"Error during transcription: {str(e)}"
+
     def interact_with_agent(self, prompt: str, messages: List[Dict[str, Any]], session_state: Dict[str, Any]):
         """Handles the interaction with the agent and yields chat messages."""
         import gradio as gr # Ensure gr is available
@@ -234,7 +257,7 @@ class GradioUI:
             session_state["agent"] = self.agent
 
         try:
-            messages.append(gr.ChatMessage(role="user", content=prompt))
+            # messages.append(gr.ChatMessage(role="user", content=prompt))
             yield messages
 
             stream = stream_to_gradio(session_state["agent"], task=prompt, reset_agent_memory=False)
@@ -390,12 +413,24 @@ class GradioUI:
                         gr.Markdown("**Ваш запрос**", container=True)
                         text_input = gr.Textbox(
                             lines=3,
-                            label="Сообщение чата",
+                            label="Текстовое сообщение",
                             container=False,
                             placeholder="Введите ваш запрос здесь и нажмите Shift+Enter или кнопку Отправить",
-                            scale=7 # 
+                            scale=7
                         )
-                        submit_btn = gr.Button("Отправить", variant="primary", scale=1)
+
+                        # Voice input
+                        with gr.Column(scale=1):
+                            audio_input = gr.Audio(
+                                # source="microphone",
+                                type="filepath",
+                                label="Голосовой ввод",
+                                visible=self.whisper_model is not None
+                            )
+
+                    with gr.Row():
+                        submit_btn = gr.Button("Отправить", variant="primary", scale=1, interactive=False)
+                        clear_btn = gr.Button("Очистить", scale=1)
 
                     if self.file_upload_folder is not None:
                         with gr.Group():
@@ -495,37 +530,75 @@ class GradioUI:
                 )
 
             # Define the function to re-enable inputs
-            def reset_inputs():
+            # def reset_inputs():
+            #     return (
+            #         gr.Textbox(
+            #             interactive=True, placeholder="Введите ваш запрос здесь и нажмите Shift+Enter или кнопку Отправить"
+            #         ),
+            #         gr.Button(interactive=True),
+            #     )
+
+            def handle_audio(audio):
+                if audio is None:
+                    return gr.Textbox(), gr.Button(interactive=False)
+                transcription = self.transcribe_audio(audio)
+                # Enable submit button if transcription is not empty
                 return (
-                    gr.Textbox(
-                        interactive=True, placeholder="Введите ваш запрос здесь и нажмите Shift+Enter или кнопку Отправить"
-                    ),
-                    gr.Button(interactive=True),
+                    gr.Textbox(value=transcription),
+                    gr.Button(interactive=bool(transcription.strip()))
                 )
+
+            def handle_text_input(text):
+                # Enable submit button if text input is not empty
+                return gr.Button(interactive=bool(text.strip()))
+
+            # Connect audio input to text input
+            # audio_input.change(
+            #     handle_audio,
+            #     inputs=[audio_input],
+            #     outputs=[text_input],
+            #     show_progress=True
+            # )
+
+            # Add clear button handler
+            clear_btn.click(
+                lambda: (gr.Textbox(value=""), gr.Audio(value=None)),
+                outputs=[text_input, audio_input]
+            )
 
             # --- Submit Logic (Button and Enter key) ---
             submit_inputs = [text_input, chatbot, session_state, file_uploads_log]
             submit_outputs = [
-                chatbot, # Updated chat
-                mailbox_thread_selector, # Updated thread list
-                thread_id_map,           # Updated map
-                mailbox_thread_content_display, # Cleared thread content
-                calendar_state_display,  # Updated calendar
-                text_input,              # Cleared/Reset text input
-                submit_btn               # Re-enabled submit button
+                chatbot,
+                mailbox_thread_selector,
+                thread_id_map,
+                mailbox_thread_content_display,
+                calendar_state_display,
+                text_input,
+                submit_btn,
+                audio_input  # Add audio input to reset after submission
             ]
+
+            # Update the reset_inputs function
+            def reset_inputs():
+                return (
+                    gr.Textbox(interactive=True,
+                               placeholder="Введите ваш запрос здесь и нажмите Shift+Enter или кнопку Отправить"),
+                    gr.Button(interactive=True),
+                    gr.Audio(value=None)  # Clear audio input
+                )
 
             def handle_submit_and_update(prompt, history, state, current_file_log):
                 # 1. Log user message (prepare prompt) and disable inputs
                 processed_prompt, _, _ = self.log_user_message(prompt, current_file_log)
                 # Determine initial state for outputs before agent interaction
-                current_radio = gr.Radio() # Default update (no change)
+                current_radio = gr.Radio()  # Default update (no change)
                 current_map = state.get("thread_id_map", {})
-                current_content = gr.Markdown() # Default update
-                current_calendar = gr.Textbox() # Default update
+                current_content = gr.Markdown()  # Default update
+                current_calendar = gr.Textbox()  # Default update
                 if self.mailbox:
-                    current_radio_params, _, _ = self._update_mailbox_display() # Get current params for update
-                    current_radio = gr.update(**current_radio_params) # Ensure it keeps its state
+                    current_radio_params, _, _ = self._update_mailbox_display()  # Get current params for update
+                    current_radio = gr.update(**current_radio_params)  # Ensure it keeps its state
                 if self.calendar:
                     current_calendar = self._update_calendar_display()
 
@@ -534,33 +607,31 @@ class GradioUI:
                 updated_initial_history = history + [user_message]
 
                 yield (
-                    updated_initial_history, # Show user message immediately using ChatMessage
-                    current_radio, # Keep radio state
-                    current_map, # Keep map
-                    current_content, # Keep content
-                    current_calendar, # Keep calendar state
-                    gr.Textbox(value="", interactive=False), # Clear and disable input
-                    gr.Button(interactive=False) # Disable button
+                    updated_initial_history,  # Show user message immediately using ChatMessage
+                    current_radio,  # Keep radio state
+                    current_map,  # Keep map
+                    current_content,  # Keep content
+                    current_calendar,  # Keep calendar state
+                    gr.Textbox(value="", interactive=False),  # Clear and disable input
+                    gr.Button(interactive=False),  # Disable button
+                    gr.Audio(value=None)  # Reset audio input
                 )
 
                 # 2. Interact with the agent (updates history in place)
-                agent_gen = self.interact_with_agent(processed_prompt, history, state)
+                agent_gen = self.interact_with_agent(processed_prompt, updated_initial_history, state)
                 final_history = None
                 for updated_history in agent_gen:
-                    final_history = updated_history # Store the last yielded history
-                    # Yield intermediate chat updates if needed (optional, can make UI sluggish)
-                    # yield (updated_history, gr.Radio(), state.get("thread_id_map", {}), gr.Markdown(), gr.Textbox(), gr.Textbox(interactive=False), gr.Button(interactive=False))
+                    final_history = updated_history  # Store the last yielded history
 
                 # Ensure final_history has the latest state
                 if final_history is None:
-                     final_history = history # Use original history if generator was empty
+                    final_history = updated_initial_history  # Use history with user message if generator was empty
 
                 # 3. Update state displays (Mailbox, Calendar)
-                # This function now returns updates for: Radio, Map, Content, Calendar
                 radio_update, new_map, content_update, calendar_update = update_displays_after_interaction()
 
                 # 4. Reset input controls
-                text_input_update, submit_btn_update = reset_inputs()
+                text_input_update, submit_btn_update, audio_input_update = reset_inputs()
 
                 # 5. Yield final state - ensure the order matches the submit_outputs list
                 yield (
@@ -570,7 +641,8 @@ class GradioUI:
                     content_update,
                     calendar_update,
                     text_input_update,
-                    submit_btn_update
+                    submit_btn_update,
+                    audio_input_update
                 )
 
             submit_btn.click(
@@ -580,10 +652,22 @@ class GradioUI:
                 #api_name="agent_chat" # Optional API name
             )
             text_input.submit(
-                 handle_submit_and_update,
+                handle_submit_and_update,
                 inputs=submit_inputs,
                 outputs=submit_outputs,
                 #api_name=False # Disable API for enter key?
+            )
+
+            text_input.change(
+                handle_text_input,
+                inputs=[text_input],
+                outputs=[submit_btn]
+            )
+
+            audio_input.change(
+                handle_audio,
+                inputs=[audio_input],
+                outputs=[text_input, submit_btn]
             )
 
 
