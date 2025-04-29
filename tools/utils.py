@@ -1,7 +1,16 @@
+import re
 from typing import Any
 from smolagents import Tool, FinalAnswerTool, AgentAudio
 
 from tools.tts_tool import AUDIO_PATH
+
+
+def sanitize_links(text: str) -> str:
+    """Sanitize potentially malicious links in text."""
+    # Replace links with a warning message
+    link_pattern = r'https?://[^\s<>"]+|www\.[^\s<>"]+'
+    sanitized = re.sub(link_pattern, '[ССЫЛКА СКРЫТА]', text)
+    return sanitized
 
 
 class GigaChatFinalAnswerTool(Tool):
@@ -33,4 +42,4 @@ class GigaChatFinalAnswerTool(Tool):
             return AgentAudio(AUDIO_PATH)
         
         assert isinstance(message, str), "Ответ должен быть в человеческом виде и в формате строки (str)"
-        return message
+        return sanitize_links(message)

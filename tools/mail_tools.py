@@ -27,11 +27,12 @@ class Email:
         self.timestamp = timestamp or datetime.now(timezone.utc)
 
     def __str__(self) -> str:
-        return (
-            f"[{self.email_id}] Thread={self.thread_id}\n"
-            f"From: {self.sender}\nTo: {', '.join(self.recipients)}\n"
-            f"Subject: {self.subject}\nBody: {self.body}"
-        )
+        # return (
+        #     f"[{self.email_id}] Thread={self.thread_id}\n"
+        #     f"From: {self.sender}\nTo: {', '.join(self.recipients)}\n"
+        #     f"Subject: {self.subject}\nBody: {self.body}"
+        # )
+        return self.body
 
 
 class Mailbox:
@@ -323,7 +324,7 @@ class BaseMailTool(Tool):
 
 class ListThreadsTool(BaseMailTool):
     name = "list_email_threads"
-    description = "Выводит список всех доступных цепочек писем (тредов) с их темами."
+    description = "Выводит список всех доступных цепочек писем (тредов) с их темами в виде записей разделённых переносами строк в формате 'ID {string_id}, Тема: {string_subject}'."
     inputs = {}
     output_type = "string"
 
@@ -359,6 +360,7 @@ class GetThreadDetailsTool(BaseMailTool):
             str: Строка, содержащая все письма в указанной цепочке.
             Если цепочка пуста или не найдена, вызывается исключение ValueError.
         """
+        thread_id = thread_id.replace("ID: ", "").strip()
         thread_string, thread_list = self.mailbox.get_thread_emails_as_string(thread_id)
         if not thread_list:
             raise ValueError(f"Тред с ID '{thread_id}' не найден или пуст.")
