@@ -6,6 +6,7 @@ from smolagents import CodeAgent, ToolCallingAgent, Tool, UserInputTool
 from tools.mail_tools import MailToolset
 from tools.calendar_tools import CalendarToolset
 from tools.basic_tools import CurrencyConversionTool, WeatherTool, TimeTool
+from tools.tts_tool import TextToSpeechTool
 from tools.utils import GigaChatFinalAnswerTool
 from ui.agent_ui import GradioUI
 from examples.mailbox_example import MAILBOX_EXAMPLE
@@ -32,7 +33,7 @@ agent = CodeAgent(
     tools=[
         CurrencyConversionTool(credentials['currency_api_key']),
         WeatherTool(credentials['weather_api_key']),
-        TimeTool()] +
+        TimeTool(), TextToSpeechTool()] +
         MailToolset(mailbox, model).tools +
         CalendarToolset(calendar).get_tools(),
     additional_authorized_imports=["datetime"],

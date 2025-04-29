@@ -1,5 +1,7 @@
 from typing import Any
-from smolagents import Tool, FinalAnswerTool
+from smolagents import Tool, FinalAnswerTool, AgentAudio
+
+from tools.tts_tool import AUDIO_PATH
 
 
 class GigaChatFinalAnswerTool(Tool):
@@ -26,6 +28,9 @@ class GigaChatFinalAnswerTool(Tool):
         Returns:
             The message itself.
         """
+
+        if ".wav" in message:
+            return AgentAudio(AUDIO_PATH)
         
         assert isinstance(message, str), "Ответ должен быть в человеческом виде и в формате строки (str)"
         return message

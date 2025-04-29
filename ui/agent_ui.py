@@ -174,6 +174,9 @@ def stream_to_gradio(
     final_answer = step_log
     final_answer = handle_agent_output_types(final_answer)
 
+    if isinstance(final_answer, str) and ".wav" in final_answer:
+        final_answer = AgentAudio(final_answer)
+
     final_answer_metadata = {}
 
     if isinstance(final_answer, AgentText):
